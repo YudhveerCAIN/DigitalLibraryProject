@@ -1,0 +1,434 @@
+drop database librarymanagement;
+create database librarymanagement;
+use LibraryManagement;
+-- Create User table
+
+SET GLOBAL event_scheduler = ON;
+CREATE TABLE User (
+    User_ID INT PRIMARY KEY AUTO_INCREMENT,
+    Name VARCHAR(100) NOT NULL,
+    Email VARCHAR(255) UNIQUE NOT NULL,
+    Password VARCHAR(255) NOT NULL,
+    Role ENUM('Admin', 'Librarian', 'Researcher', 'Student') NOT NULL,
+    Membership_Status ENUM('Active', 'Inactive') NOT NULL,
+    Date_Joined DATE NOT NULL,
+    Last_Login DATETIME,
+    Contact_Number VARCHAR(20),
+    Address TEXT,
+    Privilege_Level INT
+);
+
+-- Student specialization table
+CREATE TABLE Student (
+    Student_ID INT PRIMARY KEY,
+    User_ID INT,
+    Degree_Program VARCHAR(100),
+    Enrollment_Year INT,
+    FOREIGN KEY (User_ID) REFERENCES User(User_ID)
+);
+
+-- Researcher specialization table
+CREATE TABLE Researcher (
+    Researcher_ID INT PRIMARY KEY,
+    User_ID INT,
+    Institution VARCHAR(255),
+    Research_Interests TEXT,
+    Publications_Count INT DEFAULT 0,
+    FOREIGN KEY (User_ID) REFERENCES User(User_ID)
+);
+
+-- Librarian specialization table
+CREATE TABLE Librarian (
+    Staff_ID INT PRIMARY KEY,
+    User_ID INT,
+    Work_Shift VARCHAR(50),
+    FOREIGN KEY (User_ID) REFERENCES User(User_ID)
+);
+
+-- Publication generalized table
+CREATE TABLE Publication (
+    Publication_ID INT PRIMARY KEY AUTO_INCREMENT,
+    Title VARCHAR(255) NOT NULL,
+    Publication_Year INT,
+    Language VARCHAR(50),
+    Status ENUM('Published', 'Unpublished', 'In-Progress') NOT NULL
+);
+
+-- Book specialization table
+CREATE TABLE Book (
+    Publication_ID INT PRIMARY KEY,
+    Publisher VARCHAR(255),
+    ISBN VARCHAR(20) UNIQUE,
+    Location VARCHAR(100),
+    Available_Copies INT,
+    Total_Copies INT,
+    FOREIGN KEY (Publication_ID) REFERENCES Publication(Publication_ID)
+);
+
+-- Research Paper specialization table
+CREATE TABLE Research_Paper (
+    Publication_ID INT PRIMARY KEY,
+    Journal_Name VARCHAR(255),
+    Conference_Name VARCHAR(255),
+    DOI VARCHAR(100) UNIQUE,
+    Keywords TEXT,
+    Abstract TEXT,
+    File VARCHAR(255),
+    Citations_Count INT DEFAULT 0,
+    FOREIGN KEY (Publication_ID) REFERENCES Publication(Publication_ID)
+);
+
+-- Author table
+CREATE TABLE Author (
+    Author_ID INT PRIMARY KEY AUTO_INCREMENT,
+    First_Name VARCHAR(100),
+    Last_Name VARCHAR(100),
+    Email VARCHAR(255),
+    Affiliation VARCHAR(255)
+);
+
+-- Category table
+CREATE TABLE Category (
+    Category_ID INT PRIMARY KEY AUTO_INCREMENT,
+    Name VARCHAR(100), 
+    Description TEXT
+);
+
+-- Library Transaction table
+CREATE TABLE Library_Transaction (
+    Transaction_ID INT PRIMARY KEY AUTO_INCREMENT,
+    User_ID INT,
+    Publication_ID INT,
+    Transaction_Type ENUM('Borrow', 'Return', 'Reservation'),
+    Transaction_Date DATE,
+    Due_Date DATE,
+    Late_Fee DECIMAL(5,2),
+    FOREIGN KEY (User_ID) REFERENCES User(User_ID),
+    FOREIGN KEY (Publication_ID) REFERENCES Publication(Publication_ID)
+);
+
+-- Reservation table
+CREATE TABLE Reservation (
+    Reservation_ID INT PRIMARY KEY AUTO_INCREMENT,
+    User_ID INT,
+    Publication_ID INT,
+    Reservation_Date DATE,
+    Expiry_Date DATE,
+    Status ENUM('Active', 'Expired'),
+    FOREIGN KEY (User_ID) REFERENCES User(User_ID),
+    FOREIGN KEY (Publication_ID) REFERENCES Publication(Publication_ID)
+);
+
+-- Publication Access table
+CREATE TABLE Publication_Access (
+    Access_ID INT PRIMARY KEY AUTO_INCREMENT,
+    User_ID INT,
+    Publication_ID INT,
+    Access_Date DATE,
+    Access_Type ENUM('Download', 'View'),
+    FOREIGN KEY (User_ID) REFERENCES User(User_ID),
+    FOREIGN KEY (Publication_ID) REFERENCES Publication(Publication_ID)
+);
+
+-- Citation table
+CREATE TABLE Citation (
+    Citation_ID INT PRIMARY KEY AUTO_INCREMENT,
+    User_ID INT,
+    Publication_ID INT,
+    Citation_Date DATE,
+    FOREIGN KEY (User_ID) REFERENCES User(User_ID),
+    FOREIGN KEY (Publication_ID) REFERENCES Publication(Publication_ID)
+);
+
+-- Review table
+CREATE TABLE Review (
+    Review_ID INT PRIMARY KEY AUTO_INCREMENT,
+    Review_Date DATE,
+    Rating INT CHECK (Rating BETWEEN 1 AND 5),
+    Comments TEXT,
+    User_ID INT,
+    Publication_ID INT,
+    FOREIGN KEY (User_ID) REFERENCES User(User_ID),
+    FOREIGN KEY (Publication_ID) REFERENCES Publication(Publication_ID)
+);
+
+-- Many-to-Many Publication and Author
+CREATE TABLE Publication_Author (
+    Publication_ID INT,
+    Author_ID INT,
+    PRIMARY KEY (Publication_ID, Author_ID),
+    FOREIGN KEY (Publication_ID) REFERENCES Publication(Publication_ID),
+    FOREIGN KEY (Author_ID) REFERENCES Author(Author_ID)
+);
+
+-- Many-to-Many Publication and Category
+CREATE TABLE Publication_Category (
+    Publication_ID INT,
+    Category_ID INT,
+    PRIMARY KEY (Publication_ID, Category_ID),
+    FOREIGN KEY (Publication_ID) REFERENCES Publication(Publication_ID),
+    FOREIGN KEY (Category_ID) REFERENCES Category(Category_ID)
+);
+
+-- Procedures--
+DELIMITER //
+CREATE PROCEDURE RegisterUser (
+    IN p_name VARCHAR(100),
+    IN p_email VARCHAR(255),
+    IN p_password VARCHAR(255),
+    IN p_role ENUM('Admin', 'Librarian', 'Researcher', 'Student'),
+    IN p_status ENUM('Active', 'Inactive'),
+    IN p_joined DATE,
+    IN p_last_login DATETIME,
+    IN p_contact VARCHAR(20),
+    IN p_address TEXT,
+    IN p_privilege_level INT
+)
+BEGIN
+    INSERT INTO User (Name, Email, Password, Role, Membership_Status, Date_Joined, Last_Login, Contact_Number, Address, Privilege_Level)
+    VALUES (p_name, p_email, p_password, p_role, p_status, p_joined, p_last_login, p_contact, p_address, p_privilege_level);
+END;
+//DELIMITER ;
+DELIMITER //
+CREATE PROCEDURE CreatePublication (
+    IN p_title VARCHAR(255),
+    IN p_year INT,
+    IN p_language VARCHAR(50),
+    IN p_status ENUM('Published', 'Unpublished', 'In-Progress')
+)
+BEGIN
+    DECLARE new_pub_id INT;
+    START TRANSACTION;
+    INSERT INTO Publication (Title, Publication_Year, Language, Status)
+    VALUES (p_title, p_year, p_language, p_status);
+    SET new_pub_id = LAST_INSERT_ID();
+    COMMIT;
+    SELECT new_pub_id AS Publication_ID;
+END;
+//DELIMITER ;
+
+DELIMITER //
+CREATE PROCEDURE CreateCitation (
+    IN p_user_id INT,
+    IN p_publication_id INT,
+    IN p_citation_date DATE
+)
+BEGIN
+    INSERT INTO Citation (User_ID, Publication_ID, Citation_Date)
+    VALUES (p_user_id, p_publication_id, p_citation_date);
+END;
+//
+DELIMITER ;
+
+DELIMITER //
+CREATE PROCEDURE CreateResearchPaper (
+    IN p_title VARCHAR(255),
+    IN p_year INT,
+    IN p_language VARCHAR(50),
+    IN p_status ENUM('Published', 'Unpublished', 'In-Progress'),
+    IN p_journal_name VARCHAR(255),
+    IN p_conference_name VARCHAR(255),
+    IN p_doi VARCHAR(100),
+    IN p_keywords TEXT,
+    IN p_abstract TEXT,
+    IN p_file VARCHAR(255))
+BEGIN
+    DECLARE new_pub_id INT;
+    START TRANSACTION;
+    INSERT INTO Publication (Title, Publication_Year, Language, Status)
+    VALUES (p_title, p_year, p_language, p_status);
+    SET new_pub_id = LAST_INSERT_ID();
+    INSERT INTO Research_Paper (Publication_ID, Journal_Name, Conference_Name, DOI, Keywords, Abstract, File)
+    VALUES (new_pub_id, p_journal_name, p_conference_name, p_doi, p_keywords, p_abstract, p_file);
+    COMMIT;
+END;
+//DELIMITER ;
+
+DELIMITER //
+CREATE PROCEDURE BorrowPublication (
+    IN p_User_ID INT,
+    IN p_Publication_ID INT,
+    IN p_Transaction_Date DATE,
+    IN p_Due_Date DATE)
+BEGIN
+    DECLARE v_book_exists INT;
+    DECLARE v_available_copies INT;
+    SELECT COUNT(*) INTO v_book_exists
+    FROM Book WHERE Publication_ID = p_Publication_ID;
+    IF v_book_exists > 0 THEN
+        SELECT Available_Copies INTO v_available_copies FROM Book
+        WHERE Publication_ID = p_Publication_ID;
+        IF v_available_copies > 0 THEN
+            UPDATE Book
+            SET Available_Copies = v_available_copies - 1
+            WHERE Publication_ID = p_Publication_ID;
+            INSERT INTO Library_Transaction (
+                User_ID,Publication_ID,Transaction_Type,Transaction_Date,Due_Date,Late_Fee
+            ) VALUES (
+                p_User_ID,p_Publication_ID,'Borrow',p_Transaction_Date,p_Due_Date,0.00);
+        END IF;END IF;END;
+//DELIMITER ;
+
+DELIMITER //
+CREATE PROCEDURE ReturnPublication (
+    IN p_User_ID INT,
+    IN p_Publication_ID INT,
+    IN p_Transaction_Date DATE,
+    IN p_Due_Date DATE)
+BEGIN
+    DECLARE v_book_exists INT;
+    DECLARE v_available_copies INT;
+    DECLARE v_total_copies INT;
+    SELECT COUNT(*) INTO v_book_exists FROM Book
+    WHERE Publication_ID = p_Publication_ID;
+    IF v_book_exists > 0 THEN
+        SELECT Available_Copies, Total_Copies 
+        INTO v_available_copies, v_total_copies FROM Book
+        WHERE Publication_ID = p_Publication_ID;
+        IF v_available_copies < v_total_copies THEN UPDATE Book
+            SET Available_Copies = v_available_copies + 1
+            WHERE Publication_ID = p_Publication_ID;
+            INSERT INTO Library_Transaction (User_ID,Publication_ID,Transaction_Type,Transaction_Date,Due_Date,Late_Fee
+            ) VALUES (p_User_ID,p_Publication_ID,'Return',p_Transaction_Date,p_Due_Date,0.00
+            );
+        END IF;END IF;END;
+//DELIMITER ;
+
+DELIMITER //
+CREATE PROCEDURE ReservePublication(
+    IN p_user_id INT,
+    IN p_publication_id INT,
+    IN p_reservation_date DATE,
+    IN p_expiry_date DATE)
+BEGIN
+    DECLARE reservation_status ENUM('Active', 'Expired') DEFAULT 'Active';
+    START TRANSACTION;
+    INSERT INTO Reservation (User_ID, Publication_ID, Reservation_Date, Expiry_Date, Status)
+    VALUES (p_user_id, p_publication_id, p_reservation_date, p_expiry_date, reservation_status);
+    UPDATE Publication
+    SET Status = 'Published'
+    WHERE Publication_ID = p_publication_id;
+    COMMIT;
+END //
+//DELIMITER ;
+
+-- Functions-- 
+DELIMITER //
+CREATE FUNCTION GetCitationCount(pubId INT)
+RETURNS INT
+DETERMINISTIC
+BEGIN
+    DECLARE total INT;
+    SELECT COUNT(*) INTO total
+    FROM Citation
+    WHERE Publication_ID = pubId;
+    RETURN total;
+END;
+//
+DELIMITER ;
+
+DELIMITER //
+CREATE FUNCTION GetTotalBorrowsByUser(uid INT)
+RETURNS INT
+DETERMINISTIC
+BEGIN
+    DECLARE total INT;
+    SELECT COUNT(*) INTO total
+    FROM Library_Transaction
+    WHERE User_ID = uid AND Transaction_Type = 'Borrow';
+    RETURN total;
+END;
+//
+DELIMITER ;
+
+DELIMITER //
+CREATE FUNCTION GetAvailableCopies(pubId INT)
+RETURNS INT
+DETERMINISTIC
+BEGIN
+    DECLARE total INT;
+    SELECT Available_Copies INTO total
+    FROM Book
+    WHERE Publication_ID = pubId;
+    RETURN total;
+END;
+//
+DELIMITER ;
+
+DELIMITER //
+CREATE FUNCTION GetTotalPublicationsAccessed(uid INT)
+RETURNS INT
+DETERMINISTIC
+BEGIN
+    DECLARE total INT;
+    SELECT COUNT(DISTINCT Publication_ID) INTO total
+    FROM Publication_Access
+    WHERE User_ID = uid;
+    RETURN total;
+END;
+//
+DELIMITER ;
+
+-- Triggers --
+DELIMITER //
+CREATE TRIGGER trg_calculate_late_fee
+BEFORE INSERT ON Library_Transaction
+FOR EACH ROW
+BEGIN
+    DECLARE days_late INT;
+    IF NEW.Transaction_Type = 'Return' THEN
+        SET days_late = DATEDIFF(NEW.Transaction_Date, NEW.Due_Date);
+        IF days_late > 0 THEN
+            SET NEW.Late_Fee = days_late * 2.00;
+        ELSE
+            SET NEW.Late_Fee = 0.00;
+        END IF;
+    END IF;
+END;
+//
+DELIMITER ;
+DELIMITER //
+CREATE TRIGGER trg_prevent_duplicate_reservation
+BEFORE INSERT ON Reservation
+FOR EACH ROW
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM Reservation
+        WHERE User_ID = NEW.User_ID
+          AND Publication_ID = NEW.Publication_ID
+          AND Status = 'Active'
+    ) THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'User already has an active reservation for this publication';
+    END IF;
+END;
+//DELIMITER ;
+
+DELIMITER //
+CREATE TRIGGER trg_update_citations_count
+AFTER INSERT ON Citation
+FOR EACH ROW
+BEGIN
+    IF EXISTS (SELECT 1 FROM Research_Paper WHERE Publication_ID = NEW.Publication_ID) THEN
+        UPDATE Research_Paper
+        SET Citations_Count = Citations_Count + 1
+        WHERE Publication_ID = NEW.Publication_ID;
+    END IF;
+END;
+//DELIMITER ;
+
+DELIMITER //
+
+CREATE EVENT ev_auto_expire_reservations
+ON SCHEDULE EVERY 1 DAY
+DO
+BEGIN
+    UPDATE Reservation
+    SET Status = 'Expired'
+    WHERE Status = 'Active' AND Expiry_Date < CURDATE();
+END;
+//
+
+DELIMITER ;
+  
